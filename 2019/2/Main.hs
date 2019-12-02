@@ -1,5 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE BlockArguments #-}
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -11,6 +14,7 @@ import Data.Array.MArray
 import Data.Array.ST
 import Control.Monad
 import Control.Monad.ST
+import Control.Monad.State
 
 type Parser = Parsec Void String
 
@@ -29,7 +33,7 @@ readInput = do
     s <- readFile "input.txt"
     return $ justParse integers s
 
-initialize :: MArray a Int m => [Int] -> Int -> Int -> m (a Int Int)
+initialize :: MArray arr Int m => [Int] -> Int -> Int -> m (arr Int Int)
 initialize input noun verb = do
     arr <- newListArray (0, size-1) input
     writeArray arr 1 noun
@@ -38,48 +42,65 @@ initialize input noun verb = do
     where
         size = length input
 
-binOp :: MArray a Int m => (Int -> Int -> Int) -> Int -> a Int Int -> m ()
-binOp op i arr = do
-    x <- readArray arr (i + 1) >>= readArray arr
-    y <- readArray arr (i + 2) >>= readArray arr
-    readArray arr (i + 3) >>= \zi -> writeArray arr zi (x `op` y)
+newtype Intcode arr m a =
+    Intcode { runIntcode :: (StateT (arr Int Int) m a) }
+    deriving newtype (Functor, Applicative, Monad, MonadState (arr Int Int), MonadTrans)
 
-runProgram :: MArray a Int m => a Int Int -> m (a Int Int)
-runProgram arr = go 0
+evalIntcode :: MArray arr Int m => arr Int Int -> Intcode arr m a -> m a
+evalIntcode arr s = evalStateT (runIntcode s) arr
+
+readMem :: MArray arr Int m => Int -> Intcode arr m Int
+readMem i = do
+    arr <- get
+    lift $ readArray arr i
+
+writeMem :: MArray arr Int m => Int -> Int -> Intcode arr m ()
+writeMem i x = do
+    arr <- get
+    lift $ writeArray arr i x
+
+binOp :: MArray arr Int m => (Int -> Int -> Int) -> Int -> Intcode arr m ()
+binOp op i = do
+    x <- readMem (i + 1) >>= readMem
+    y <- readMem (i + 2) >>= readMem
+    readMem (i + 3) >>= \ri -> writeMem ri (x `op` y)
+
+getOutput :: MArray arr Int m => Intcode arr m Int
+getOutput = readMem 0
+
+runProgram :: MArray arr Int m => Intcode arr m Int
+runProgram = go 0
     where
         go i = do
-            opCode <- readArray arr i
+            opCode <- readMem i
             case opCode of
                 1 -> do
-                    binOp (+) i arr
+                    binOp (+) i
                     go (i + 4)
                 2 -> do
-                    binOp (*) i arr
+                    binOp (*) i
                     go (i + 4)
-                99 -> return arr
-
-getOutput :: MArray a Int m => a Int Int -> m Int
-getOutput arr = readArray arr 0
+                99 ->
+                    getOutput
 
 a :: IO Int
 a = do
     input <- readInput
-    return $ runST $ do
+    return $ runST do
         arr <- initialize input 12 2 :: ST s (STUArray s Int Int)
-        runProgram arr
-        getOutput arr
-
-allInits :: MArray a Int m => [Int] -> m [a Int Int]
-allInits input =
-    forM (range ((0, 0), (99, 99))) $ \(noun, verb) ->
-        initialize input noun verb
+        evalIntcode arr runProgram
 
 b :: IO Int
 b = do
     input <- readInput
-    return $ runST $ do
-        inits <- allInits input :: ST s [STUArray s Int Int]
-        results <- forM inits $ \arr -> do
-            runProgram arr
-        [theResult] <- filterM (\arr -> (== 19690720) <$> getOutput arr) results
-        (\noun verb -> 100 * noun + verb) <$> readArray theResult 1 <*> readArray theResult 2
+    return $ runST do
+        results <- forM (range ((0, 0), (99, 99))) $ \(noun, verb) -> do
+            arr <- initialize input noun verb :: ST s (STUArray s Int Int)
+            evalIntcode arr do
+                output <- runProgram
+                return
+                    if output == 19690720 then
+                        Just (100 * noun + verb)
+                    else
+                        Nothing
+        return $ catMaybes results !! 0
