@@ -38,22 +38,23 @@ initialize input noun verb = do
     where
         size = length input
 
+binOp :: MArray a Int m => (Int -> Int -> Int) -> Int -> a Int Int -> m ()
+binOp op i arr = do
+    x <- readArray arr (i + 1) >>= readArray arr
+    y <- readArray arr (i + 2) >>= readArray arr
+    readArray arr (i + 3) >>= \zi -> writeArray arr zi (x `op` y)
+
 runProgram :: MArray a Int m => a Int Int -> m (a Int Int)
 runProgram arr = go 0
     where
         go i = do
-            (_, size) <- getBounds arr
             opCode <- readArray arr i
             case opCode of
                 1 -> do
-                    x <- readArray arr (i + 1) >>= readArray arr
-                    y <- readArray arr (i + 2) >>= readArray arr
-                    readArray arr (i + 3) >>= \zi -> writeArray arr zi (x + y)
+                    binOp (+) i arr
                     go (i + 4)
                 2 -> do
-                    x <- readArray arr (i + 1) >>= readArray arr
-                    y <- readArray arr (i + 2) >>= readArray arr
-                    readArray arr (i + 3) >>= \zi -> writeArray arr zi (x * y)
+                    binOp (*) i arr
                     go (i + 4)
                 99 -> return arr
 
