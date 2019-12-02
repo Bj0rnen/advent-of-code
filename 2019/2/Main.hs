@@ -104,3 +104,8 @@ b = do
                     else
                         Nothing
         return $ catMaybes results !! 0
+
+main :: IO ()
+main = do
+    a >>= print
+    b >>= print

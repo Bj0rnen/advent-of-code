@@ -21,3 +21,8 @@ b = do
     weights <- readModules
     let combinedFuels = combinedFuel <$> weights
     return $ sum combinedFuels
+
+main :: IO ()
+main = do
+    a >>= print
+    b >>= print
