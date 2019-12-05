@@ -79,6 +79,12 @@ binOp op i m1 m2 = do
     y <- fetch m2 (i + 2)
     readMem (i + 3) >>= \ri -> writeMem ri (x `op` y)
 
+boolOp :: MArray arr Int m => (Int -> Int -> Bool) -> Int -> ParamMode -> ParamMode -> Intcode arr m ()
+boolOp op i m1 m2 = do
+    x <- fetch m1 (i + 1)
+    y <- fetch m2 (i + 2)
+    readMem (i + 3) >>= \ri -> writeMem ri (if x `op` y then 1 else 0)
+
 input :: MArray arr Int m => Int -> Intcode arr m ()
 input i = do
     x <- getInput
@@ -88,6 +94,14 @@ output :: MArray arr Int m => Int -> ParamMode -> Intcode arr m ()
 output i m1 = do
     x <- fetch m1 (i + 1)
     tell [x]
+
+jumpIf :: MArray arr Int m => Bool -> Int -> ParamMode -> ParamMode -> Intcode arr m (Maybe Int)
+jumpIf b i m1 m2 = do
+    x <- fetch m1 (i + 1)
+    if (x /= 0 && b) || (x == 0 && not b) then
+        Just <$> fetch m2 (i + 2)
+    else
+        return Nothing
 
 data ParamMode = Position | Immediate
     deriving (Show, Enum)
@@ -115,6 +129,22 @@ runProgram = go 0
                 4 -> do
                     output i (paramMode 1 instruction)
                     go (i + 2)
+                5 -> do
+                    jump <- jumpIf True i (paramMode 1 instruction) (paramMode 2 instruction)
+                    case jump of
+                        Nothing -> go (i + 3)
+                        Just to -> go to
+                6 -> do
+                    jump <- jumpIf False i (paramMode 1 instruction) (paramMode 2 instruction)
+                    case jump of
+                        Nothing -> go (i + 3)
+                        Just to -> go to
+                7 -> do
+                    boolOp (<) i (paramMode 1 instruction) (paramMode 2 instruction)
+                    go (i + 4)
+                8 -> do
+                    boolOp (==) i (paramMode 1 instruction) (paramMode 2 instruction)
+                    go (i + 4)
                 99 ->
                     getOutput
 
@@ -125,10 +155,14 @@ a = do
         arr <- initialize input :: ST s (STUArray s Int Int)
         evalIntcode arr [1] runProgram
 
-b :: IO Int
-b = undefined
+b :: IO (Int, DList Int)
+b = do
+    input <- readInput
+    return $ runST $ do
+        arr <- initialize input :: ST s (STUArray s Int Int)
+        evalIntcode arr [5] runProgram
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
