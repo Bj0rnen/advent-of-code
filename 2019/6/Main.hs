@@ -25,14 +25,24 @@ readInput = do
     return (justParse orbit <$> lines s)
 
 orbits :: [(String, String)] -> Map String Int
-orbits os = orbits'
+orbits objs = orbits'
     where
-        orbits' = Map.fromList [if a == "COM" then (b, 1) else (b, (orbits' ! a) + 1) | (a, b) <- os]
+        orbits' = Map.fromList
+            [if a == "COM" then
+                (b, 1)
+            else
+                (b, (orbits' ! a) + 1)
+            | (a, b) <- objs]
 
 orbitLists :: [(String, String)] -> Map String [String]
-orbitLists os = orbits'
+orbitLists objs = orbits'
     where
-        orbits' = Map.fromList [if a == "COM" then (b, [a]) else (b, b : (orbits' ! a)) | (a, b) <- os]
+        orbits' = Map.fromList
+            [if a == "COM" then
+                (b, [a])
+            else
+                (b, b : (orbits' ! a))
+            | (a, b) <- objs]
 
 longestCommonTail :: Eq a => [a] -> [a] -> Int
 longestCommonTail = undefined
