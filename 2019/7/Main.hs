@@ -22,6 +22,7 @@ import qualified Data.DList as DList
 import Control.Monad.Trans.Class
 import Data.Bifunctor
 import Data.List
+import Data.Ord
 
 type Parser = Parsec Void String
 
@@ -154,6 +155,10 @@ run = go 0
 runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m (DList Int)
 runProgram memory input = snd <$> evalIntcode memory input run
 
+runAmp :: MArray arr Int m => [Int] -> (Int, arr Int Int) -> m [Int]
+runAmp inps (phase, amp) =
+    DList.toList <$> runProgram amp (phase : inps)
+
 a :: IO [Int]
 a = do
     input <- readInput
@@ -162,22 +167,16 @@ a = do
         return $ runST $ do
             amps <- replicateM 5 (initialize input) :: ST s [STUArray s Int Int]
             foldM runAmp [0] (zip phases amps)
-            where
-                runAmp inps (phase, amp) =
-                    DList.toList <$> runProgram amp (phase : inps)
 
 b :: IO [Int]
 b = do
     input <- readInput
     let phaseSettings = permutations [5..9]
-    maximum <$> forM phaseSettings \phases ->
+    maximumBy (comparing last) <$> forM phaseSettings \phases ->
         return $ runST $ mdo
             amps <- replicateM 5 (initialize input) :: ST s [STArray s Int Int]
             feedback <- foldM runAmp (0 : feedback) (zip phases amps)
             return feedback
-            where
-                runAmp inps (phase, amp) =
-                    DList.toList <$> runProgram amp (phase : inps)
 
 main :: IO ()
 main = do
