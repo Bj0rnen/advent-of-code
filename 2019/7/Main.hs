@@ -14,7 +14,7 @@ import Data.Maybe
 import Data.Array.MArray
 import Data.Array.ST
 import Control.Monad
-import Control.Monad.ST.Lazy
+import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.DList hiding (head, tail)
@@ -113,8 +113,8 @@ data ParamMode = Position | Immediate
 paramMode :: Int -> Int -> ParamMode
 paramMode param instr = toEnum ((instr `div` (10 ^ (param+1))) `mod` 10)
 
-runProgram :: MArray arr Int m => Intcode arr m Int
-runProgram = go 0
+run :: MArray arr Int m => Intcode arr m Int
+run = go 0
     where
         go i = do
             instruction <- readMem i
@@ -151,18 +151,20 @@ runProgram = go 0
                 99 ->
                     getOutput
 
-a :: IO Int
+runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m (DList Int)
+runProgram memory input = snd <$> evalIntcode memory input run
+
+a :: IO (DList Int)
 a = do
     input <- readInput
     let phaseSettings = permutations [0..4]
     maximum <$> forM phaseSettings \phases ->
         return $ runST $ do
-            amps <- replicateM 5 (initialize input) :: ST s [STArray s Int Int]
-            foldM runAmp 0 (zip phases amps)
+            amps <- replicateM 5 (initialize input) :: ST s [STUArray s Int Int]
+            foldM runAmp [0] (zip phases amps)
             where
-                runAmp inp (phase, amp) = do
-                    (_, [outp]) <- evalIntcode amp [phase, inp] runProgram
-                    return outp
+                runAmp inps (phase, amp) =
+                    runProgram amp (phase : DList.toList inps)
 
 b :: IO (DList Int)
 b = do
@@ -174,9 +176,8 @@ b = do
             feedback <- foldM runAmp (DList.cons 0 feedback) (zip phases amps)
             return feedback
             where
-                runAmp inps (phase, amp) = do
-                    (_, outps) <- evalIntcode amp (phase : DList.toList inps) runProgram
-                    return outps
+                runAmp inps (phase, amp) =
+                    runProgram amp (phase : DList.toList inps)
 
 main :: IO ()
 main = do
