@@ -154,7 +154,7 @@ run = go 0
 runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m (DList Int)
 runProgram memory input = snd <$> evalIntcode memory input run
 
-a :: IO (DList Int)
+a :: IO [Int]
 a = do
     input <- readInput
     let phaseSettings = permutations [0..4]
@@ -164,20 +164,20 @@ a = do
             foldM runAmp [0] (zip phases amps)
             where
                 runAmp inps (phase, amp) =
-                    runProgram amp (phase : DList.toList inps)
+                    DList.toList <$> runProgram amp (phase : inps)
 
-b :: IO (DList Int)
+b :: IO [Int]
 b = do
     input <- readInput
     let phaseSettings = permutations [5..9]
     maximum <$> forM phaseSettings \phases ->
         return $ runST $ mdo
             amps <- replicateM 5 (initialize input) :: ST s [STArray s Int Int]
-            feedback <- foldM runAmp (DList.cons 0 feedback) (zip phases amps)
+            feedback <- foldM runAmp (0 : feedback) (zip phases amps)
             return feedback
             where
                 runAmp inps (phase, amp) =
-                    runProgram amp (phase : DList.toList inps)
+                    DList.toList <$> runProgram amp (phase : inps)
 
 main :: IO ()
 main = do
