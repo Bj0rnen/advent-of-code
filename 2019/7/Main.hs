@@ -173,9 +173,9 @@ b = do
     input <- readInput
     let phaseSettings = permutations [5..9]
     maximumBy (comparing last) <$> forM phaseSettings \phases ->
-        return $ runST $ mdo
+        return $ runST $ do
             amps <- replicateM 5 (initialize input) :: ST s [STArray s Int Int]
-            feedback <- foldM runAmp (0 : feedback) (zip phases amps)
+            rec feedback <- foldM runAmp (0 : feedback) (zip phases amps)
             return feedback
 
 main :: IO ()
