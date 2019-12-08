@@ -15,8 +15,7 @@ import Data.Array.MArray
 import Data.Array.ST
 import Control.Monad
 import Control.Monad.ST
-import Control.Monad.State
-import Control.Monad.Writer
+import Control.Monad.RWS
 import Data.DList hiding (head, tail)
 import qualified Data.DList as DList
 import Control.Monad.Trans.Class
@@ -46,22 +45,20 @@ initialize input =
     newListArray (0, length input - 1) input
 
 newtype Intcode arr m a =
-    Intcode { runIntcode :: WriterT (DList Int) (StateT (arr Int Int, [Int]) m) a }
-    deriving newtype (Functor, Applicative, Monad, MonadWriter (DList Int), MonadState (arr Int Int, [Int]))
-instance MonadTrans (Intcode arr) where
-    lift = Intcode . lift . lift
+    Intcode { runIntcode :: RWST (arr Int Int) (DList Int) [Int] m a }
+    deriving newtype (Functor, Applicative, Monad, MonadReader (arr Int Int), MonadWriter (DList Int), MonadState [Int], MonadTrans)
 
 evalIntcode :: MArray arr Int m => arr Int Int -> [Int] -> Intcode arr m a -> m (a, DList Int)
-evalIntcode arr inp s = evalStateT (runWriterT (runIntcode s)) (arr, inp)
+evalIntcode arr inp s = evalRWST (runIntcode s) arr inp
 
 readMem :: MArray arr Int m => Int -> Intcode arr m Int
 readMem i = do
-    arr <- gets fst
+    arr <- ask
     lift $ readArray arr i
 
 writeMem :: MArray arr Int m => Int -> Int -> Intcode arr m ()
 writeMem i x = do
-    arr <- gets fst
+    arr <- ask
     lift $ writeArray arr i x
 
 fetch :: MArray arr Int m => ParamMode -> Int -> Intcode arr m Int
@@ -70,8 +67,8 @@ fetch Immediate i = readMem i
 
 getInput :: MArray arr Int m => Intcode arr m Int
 getInput = do
-    x <- gets (head . snd)
-    modify (second tail)
+    x <- gets head
+    modify tail
     return x
 
 getOutput :: MArray arr Int m => Intcode arr m Int
