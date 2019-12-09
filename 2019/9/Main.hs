@@ -171,18 +171,23 @@ run = go 0
 runProgram :: MArray arr Int m => arr Int Int -> ICState -> m [Int]
 runProgram memory icState = snd <$> evalIntcode memory icState run
 
-a :: IO [Int]
+a :: IO Int
 a = do
     program <- readInput
     return $ runST $ do
         memory <- initialize 1000000 program :: ST s (STUArray s Int Int)
-        runProgram memory (ICState { stdin = [1], rb = 0 })
+        [boostKeyCode] <- runProgram memory (ICState { stdin = [1], rb = 0 })
+        return boostKeyCode
 
-b :: IO [Int]
+b :: IO Int
 b = do
-    undefined
+    program <- readInput
+    return $ runST $ do
+        memory <- initialize 1000000 program :: ST s (STUArray s Int Int)
+        [boostKeyCode] <- runProgram memory (ICState { stdin = [2], rb = 0 })
+        return boostKeyCode
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
