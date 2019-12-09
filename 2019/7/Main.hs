@@ -3,6 +3,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecursiveDo #-}
 
 import Text.Megaparsec hiding (getInput)
@@ -22,6 +27,7 @@ import Control.Monad.Trans.Class
 import Data.Bifunctor
 import Data.List
 import Data.Ord
+import Data.Proxy
 
 type Parser = Parsec Void String
 
@@ -44,59 +50,67 @@ initialize :: MArray arr Int m => [Int] -> m (arr Int Int)
 initialize input =
     newListArray (0, length input - 1) input
 
-newtype Intcode arr m a =
-    Intcode { runIntcode :: RWST (arr Int Int) (DList Int) [Int] m a }
-    deriving newtype (Functor, Applicative, Monad, MonadReader (arr Int Int), MonadWriter (DList Int), MonadState [Int], MonadTrans)
+data Memory m where
+    Memory :: MArray arr Int m => arr Int Int -> Memory m
 
-evalIntcode :: MArray arr Int m => arr Int Int -> [Int] -> Intcode arr m a -> m (a, DList Int)
+newtype Intcode m a =
+    Intcode { runIntcode :: RWST (Memory m) (DList Int) [Int] m a }
+    deriving newtype (Functor, Applicative, Monad, MonadWriter (DList Int), MonadState [Int])
+instance Monad m => MonadReader (Memory m) (Intcode m) where
+    reader f = Intcode $ reader f
+    local f (Intcode ic) = Intcode $ local f ic
+instance MonadTrans Intcode where
+    lift = Intcode . lift
+
+evalIntcode :: Monad m => Memory m -> [Int] -> Intcode m a -> m (a, DList Int)
 evalIntcode arr inp s = evalRWST (runIntcode s) arr inp
 
-readMem :: MArray arr Int m => Int -> Intcode arr m Int
+readMem :: Monad m => Int -> Intcode m Int
 readMem i = do
-    arr <- ask
+    Memory arr <- ask
     lift $ readArray arr i
 
-writeMem :: MArray arr Int m => Int -> Int -> Intcode arr m ()
+writeMem :: Monad m => Int -> Int -> Intcode m ()
 writeMem i x = do
-    arr <- ask
+    Memory arr <- ask
     lift $ writeArray arr i x
 
-fetch :: MArray arr Int m => ParamMode -> Int -> Intcode arr m Int
+fetch :: Monad m => ParamMode -> Int -> Intcode m Int
 fetch Position i = readMem i >>= readMem
 fetch Immediate i = readMem i
 
-getInput :: MArray arr Int m => Intcode arr m Int
+getInput :: Monad m => Intcode m Int
 getInput = do
     x <- gets head
     modify tail
     return x
 
-getOutput :: MArray arr Int m => Intcode arr m Int
+getOutput :: Monad m => Intcode m Int
 getOutput = readMem 0
 
-binOp :: MArray arr Int m => (Int -> Int -> Int) -> Int -> ParamMode -> ParamMode -> Intcode arr m ()
+binOp :: Monad m => (Int -> Int -> Int) -> Int -> ParamMode -> ParamMode -> Intcode m ()
 binOp op i m1 m2 = do
     x <- fetch m1 (i + 1)
     y <- fetch m2 (i + 2)
     readMem (i + 3) >>= \ri -> writeMem ri (x `op` y)
 
-boolOp :: MArray arr Int m => (Int -> Int -> Bool) -> Int -> ParamMode -> ParamMode -> Intcode arr m ()
+boolOp :: Monad m => (Int -> Int -> Bool) -> Int -> ParamMode -> ParamMode -> Intcode m ()
 boolOp op i m1 m2 = do
     x <- fetch m1 (i + 1)
     y <- fetch m2 (i + 2)
     readMem (i + 3) >>= \ri -> writeMem ri (if x `op` y then 1 else 0)
 
-input :: MArray arr Int m => Int -> Intcode arr m ()
+input :: Monad m => Int -> Intcode m ()
 input i = do
     x <- getInput
     readMem (i + 1) >>= \ri -> writeMem ri x
 
-output :: MArray arr Int m => Int -> ParamMode -> Intcode arr m ()
+output :: Monad m => Int -> ParamMode -> Intcode m ()
 output i m1 = do
     x <- fetch m1 (i + 1)
     tell [x]
 
-jumpIf :: MArray arr Int m => Bool -> Int -> ParamMode -> ParamMode -> Intcode arr m (Maybe Int)
+jumpIf :: Monad m => Bool -> Int -> ParamMode -> ParamMode -> Intcode m (Maybe Int)
 jumpIf b i m1 m2 = do
     x <- fetch m1 (i + 1)
     if (x /= 0 && b) || (x == 0 && not b) then
@@ -111,7 +125,7 @@ data ParamMode = Position | Immediate
 paramMode :: Int -> Int -> ParamMode
 paramMode param instr = toEnum ((instr `div` (10 ^ (param+1))) `mod` 10)
 
-run :: MArray arr Int m => Intcode arr m Int
+run :: Monad m => Intcode m Int
 run = go 0
     where
         go i = do
@@ -149,20 +163,23 @@ run = go 0
                 99 ->
                     getOutput
 
-runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m (DList Int)
+runProgram :: Monad m => Memory m -> [Int] -> m (DList Int)
 runProgram memory input = snd <$> evalIntcode memory input run
 
-runAmp :: MArray arr Int m => [Int] -> (Int, arr Int Int) -> m [Int]
+runAmp :: Monad m => [Int] -> (Int, Memory m) -> m [Int]
 runAmp inps (phase, amp) =
     DList.toList <$> runProgram amp (phase : inps)
+
+runSTProxy :: (forall s. Proxy s -> ST s a) -> a
+runSTProxy f = runST (f Proxy)
 
 a :: IO [Int]
 a = do
     input <- readInput
     let phaseSettings = permutations [0..4]
     maximum <$> forM phaseSettings \phases ->
-        return $ runST $ do
-            amps <- replicateM 5 (initialize input) :: ST s [STUArray s Int Int]
+        return $ runSTProxy \(Proxy :: Proxy s) -> do
+            amps <- replicateM 5 (fmap (Memory @(STArray s)) (initialize input))
             foldM runAmp [0] (zip phases amps)
 
 b :: IO [Int]
@@ -170,8 +187,8 @@ b = do
     input <- readInput
     let phaseSettings = permutations [5..9]
     maximumBy (comparing last) <$> forM phaseSettings \phases ->
-        return $ runST $ do
-            amps <- replicateM 5 (initialize input) :: ST s [STArray s Int Int]
+        return $ runSTProxy \(Proxy :: Proxy s) -> do
+            amps <- replicateM 5 (fmap (Memory @(STArray s)) (initialize input))
             rec feedback <- foldM runAmp (0 : feedback) (zip phases amps)
             return feedback
 
