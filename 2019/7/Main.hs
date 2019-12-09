@@ -16,8 +16,6 @@ import Data.Array.ST
 import Control.Monad
 import Control.Monad.ST
 import Control.Monad.RWS
-import Data.DList hiding (head, tail)
-import qualified Data.DList as DList
 import Control.Monad.Trans.Class
 import Data.Bifunctor
 import Data.List
@@ -45,10 +43,10 @@ initialize input =
     newListArray (0, length input - 1) input
 
 newtype Intcode arr m a =
-    Intcode { runIntcode :: RWST (arr Int Int) (DList Int) [Int] m a }
-    deriving newtype (Functor, Applicative, Monad, MonadReader (arr Int Int), MonadWriter (DList Int), MonadState [Int], MonadTrans)
+    Intcode { runIntcode :: RWST (arr Int Int) [Int] [Int] m a }
+    deriving newtype (Functor, Applicative, Monad, MonadReader (arr Int Int), MonadWriter [Int], MonadState [Int], MonadTrans)
 
-evalIntcode :: MArray arr Int m => arr Int Int -> [Int] -> Intcode arr m a -> m (a, DList Int)
+evalIntcode :: MArray arr Int m => arr Int Int -> [Int] -> Intcode arr m a -> m (a, [Int])
 evalIntcode arr inp s = evalRWST (runIntcode s) arr inp
 
 readMem :: MArray arr Int m => Int -> Intcode arr m Int
@@ -149,12 +147,12 @@ run = go 0
                 99 ->
                     getOutput
 
-runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m (DList Int)
+runProgram :: MArray arr Int m => arr Int Int -> [Int] -> m [Int]
 runProgram memory input = snd <$> evalIntcode memory input run
 
 runAmp :: MArray arr Int m => [Int] -> (Int, arr Int Int) -> m [Int]
 runAmp inps (phase, amp) =
-    DList.toList <$> runProgram amp (phase : inps)
+    runProgram amp (phase : inps)
 
 a :: IO [Int]
 a = do
