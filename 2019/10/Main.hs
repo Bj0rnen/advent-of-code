@@ -1,5 +1,7 @@
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Ratio
 
 -- for each asteroid a
@@ -7,23 +9,25 @@ import Data.Ratio
 --     store in map with rational angle as key
 
 data Leaning =
-      Inside
-    | Up
-    | Down
+      U
     | R Rational
+    | D
     | L Rational
     deriving (Eq, Ord)
 
 leaning :: (Integer, Integer) -> (Integer, Integer) -> Leaning
 leaning p@(pr, pc) q@(qr, qc)
-    | p == q = Inside
-    | pc == qc && pr > qr = Up
-    | pc == qc && pr < qr = Down
+    | p == q = error "Can't compute leaning with self"
+    | pc == qc && pr > qr = U
     | pc < qc = R ((qr - pr) % (qc - pc))
+    | pc == qc && pr < qr = D
     | pc > qc = L ((qr - pr) % (qc - pc))
 
+detected :: [(Integer, Integer)] -> (Integer, Integer) -> Map Leaning (Integer, Integer)
+detected ps p = Map.fromList (map (\q -> (leaning p q, q)) ps)
+
 numVisible :: [(Integer, Integer)] -> (Integer, Integer) -> Int
-numVisible ps p = length $ Set.fromList (filter (/= Inside) $ map (leaning p) ps)
+numVisible ps = length . detected ps
 
 a :: IO Int
 a = do
@@ -33,7 +37,7 @@ a = do
             filter ((== '#') . snd) $
             concat $
                 zipWith (\row -> zipWith (\col ch -> ((row, col), ch)) [0..]) [0..] input
-    return $ maximum $ map (numVisible points) points
+    return $ maximum $ map (\p -> numVisible (filter (/= p) points) p) points
 
 b :: IO Int
 b = undefined
