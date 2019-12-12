@@ -3,10 +3,9 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Ratio
-
--- for each asteroid a
---     sort other asteroids by distance from a (pythagoras)
---     store in map with rational angle as key
+import Data.Bifunctor
+import Data.List
+import Data.Ord
 
 data Leaning =
       U
@@ -16,24 +15,42 @@ data Leaning =
     deriving (Eq, Ord)
 
 leaning :: (Integer, Integer) -> (Integer, Integer) -> Leaning
-leaning p@(pr, pc) q@(qr, qc)
+leaning p@(px, py) q@(qx, qy)
     | p == q = error "Can't compute leaning with self"
-    | pc == qc && pr > qr = U
-    | pc < qc = R ((qr - pr) % (qc - pc))
-    | pc == qc && pr < qr = D
-    | pc > qc = L ((qr - pr) % (qc - pc))
+    | px == qx && py > qy = U
+    | px < qx = R ((qy - py) % (qx - px))
+    | px == qx && py < qy = D
+    | px > qx = L ((qy - py) % (qx - px))
 
-detected :: [(Integer, Integer)] -> (Integer, Integer) -> Map Leaning (Integer, Integer)
-detected ps p = Map.fromList (map (\q -> (leaning p q, q)) ps)
+distSqr :: (Integer, Integer) -> (Integer, Integer) -> Integer
+distSqr (x1, y1) (x2, y2) = (x1 - x2) ^ 2 + (y1 - y2) ^ 2
 
-numVisible :: [(Integer, Integer)] -> (Integer, Integer) -> Int
-numVisible ps = length . detected ps
+detected :: (Integer, Integer) -> [(Integer, Integer)] -> Map Leaning (Integer, Integer)
+detected p ps =
+    Map.fromListWith
+        (\q1 q2 -> if distSqr p q1 < distSqr p q2 then q1 else q2)
+        (map (\q -> (leaning p q, q)) ps)
+
+numVisible :: (Integer, Integer) -> [(Integer, Integer)] -> Int
+numVisible p = length . detected p
+
+every :: [a] -> [(a, [a])]
+every [] = []
+every (x : xs) = (x, xs) : map (second ((:) x)) (every xs)
 
 bestLocation :: [(Integer, Integer)] -> (Integer, Integer)
-bestLocation ps = map (\p -> filter (/= p) points) ps
+bestLocation points =
+    fst $ maximumBy (comparing (uncurry numVisible)) (every points)
 
-vaporizationOrder :: (Integer, Integer) -> [(Integer, Integer)] -> [(Integer, Integer)]
-vaporizationOrder = undefined
+vaporizationOrder :: (Integer, Integer) -> Set (Integer, Integer) -> [(Integer, Integer)]
+vaporizationOrder p ps =
+    case Set.null ps of
+        True -> []
+        False ->
+            firstBatch ++ vaporizationOrder p rest
+            where
+                firstBatch = Map.elems (detected p (Set.toList ps))
+                rest = Set.difference ps (Set.fromList firstBatch)
 
 a :: IO Int
 a = do
@@ -42,8 +59,8 @@ a = do
             map fst $
             filter ((== '#') . snd) $
             concat $
-                zipWith (\y -> zipWith (\x c -> ((y, x), c)) [0..]) [0..] input
-    return $ maximum $ map (\p -> numVisible (filter (/= p) points) p) points
+                zipWith (\y -> zipWith (\x c -> ((x, y), c)) [0..]) [0..] input
+    return $ maximum $ map (uncurry numVisible) (every points)
 
 b :: IO Integer
 b = do
@@ -52,9 +69,13 @@ b = do
             map fst $
             filter ((== '#') . snd) $
             concat $
-                zipWith (\y -> zipWith (\x c -> ((y, x), c)) [0..]) [0..] input
+                zipWith (\y -> zipWith (\x c -> ((x, y), c)) [0..]) [0..] input
         best = bestLocation points
-    return $ (\(y, x) -> x*100 + y) $ vaporizationOrder best (filter (/= best) points) !! 199
+        ordered = vaporizationOrder best (Set.fromList (filter (/= best) points))
+        (x, y) = ordered !! 199
+    --putStrLn $ "Best = " ++ show best
+    --mapM_ print (zip [1..] ordered)
+    return $ x * 100 + y
 
 main :: IO ()
 main = do
