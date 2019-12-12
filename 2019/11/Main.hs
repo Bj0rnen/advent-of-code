@@ -194,15 +194,15 @@ move (hull, p, dir) (paint, rotation) =
     where
         newDir = if rotation == 0 then rotateLeft dir else rotateRight dir
 
-generateInputs :: [(Int, Int)] -> [Int]
-generateInputs steps =
-    map (\(hull, p, _) -> Map.findWithDefault 0 p hull) $
-        scanl' move (Map.empty, (0, 0), (0, -1)) steps
+generateInputs :: Map (Int, Int) Int -> [(Int, Int)] -> [Int]
+generateInputs hull steps =
+    map (\(h, p, _) -> Map.findWithDefault 0 p h) $
+        scanl' move (hull, (0, 0), (0, -1)) steps
 
-makeHull :: [(Int, Int)] -> Map (Int, Int) Int
-makeHull steps =
-    (\(hull, _, _) -> hull) $
-        foldl' move (Map.empty, (0, 0), (0, -1)) steps
+makeHull :: Map (Int, Int) Int -> [(Int, Int)] -> Map (Int, Int) Int
+makeHull hull steps =
+    (\(h, _, _) -> h) $
+        foldl' move (hull, (0, 0), (0, -1)) steps
 
 pairs :: [a] -> [(a, a)]
 pairs [] = []
@@ -215,16 +215,51 @@ a = do
         memory <- initialize 1000000 program :: ST s (STArray s Int Int)
         rec output <-
                 runProgram memory (ICState
-                    { stdin = generateInputs (pairs output)
+                    { stdin = generateInputs Map.empty (pairs output)
                     , rb = 0
                     })
-        return $ length $ makeHull (pairs output)
+        return $ length $ makeHull Map.empty (pairs output)
 
-b :: IO Int
+plotHull :: Map (Int, Int) Int -> String
+plotHull hull =
+    unlines $
+        [ [ if Map.findWithDefault 0 (x, y) hull == 0 then '.' else '#'
+          | x <- [minX..maxX]
+          ]
+        | y <- [minY..maxY]]
+    where
+        minX = minimum $ map fst $ Map.keys hull
+        maxX = maximum $ map fst $ Map.keys hull
+        minY = minimum $ map snd $ Map.keys hull
+        maxY = maximum $ map snd $ Map.keys hull
+
+b :: IO String
 b = do
-    undefined
+    program <- readInput
+    return $ runST $ do
+        memory <- initialize 1000000 program :: ST s (STArray s Int Int)
+        rec output <-
+                runProgram memory (ICState
+                    { stdin = generateInputs (Map.singleton (0, 0) 1) (pairs output)
+                    , rb = 0
+                    })
+        return $ plotHull $ makeHull (Map.singleton (0, 0) 1) (pairs output)
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= putStrLn
+
+{-
+Answer:
+.#....###....##.#..#.####.#..#.#....#..#...
+.#....#..#....#.#..#.#....#.#..#....#..#...
+.#....###.....#.####.###..##...#....####...
+.#....#..#....#.#..#.#....#.#..#....#..#...
+.#....#..#.#..#.#..#.#....#.#..#....#..#...
+.####.###...##..#..#.####.#..#.####.#..#...
+
+ L    B    J    H    E    K    L    H
+
+LBJHEKLH
+-}
