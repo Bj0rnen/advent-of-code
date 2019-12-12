@@ -29,6 +29,12 @@ detected ps p = Map.fromList (map (\q -> (leaning p q, q)) ps)
 numVisible :: [(Integer, Integer)] -> (Integer, Integer) -> Int
 numVisible ps = length . detected ps
 
+bestLocation :: [(Integer, Integer)] -> (Integer, Integer)
+bestLocation ps = map (\p -> filter (/= p) points) ps
+
+vaporizationOrder :: (Integer, Integer) -> [(Integer, Integer)] -> [(Integer, Integer)]
+vaporizationOrder = undefined
+
 a :: IO Int
 a = do
     input <- lines <$> readFile "input.txt"
@@ -36,13 +42,21 @@ a = do
             map fst $
             filter ((== '#') . snd) $
             concat $
-                zipWith (\row -> zipWith (\col ch -> ((row, col), ch)) [0..]) [0..] input
+                zipWith (\y -> zipWith (\x c -> ((y, x), c)) [0..]) [0..] input
     return $ maximum $ map (\p -> numVisible (filter (/= p) points) p) points
 
-b :: IO Int
-b = undefined
+b :: IO Integer
+b = do
+    input <- lines <$> readFile "input.txt"
+    let points =
+            map fst $
+            filter ((== '#') . snd) $
+            concat $
+                zipWith (\y -> zipWith (\x c -> ((y, x), c)) [0..]) [0..] input
+        best = bestLocation points
+    return $ (\(y, x) -> x*100 + y) $ vaporizationOrder best (filter (/= best) points) !! 199
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
