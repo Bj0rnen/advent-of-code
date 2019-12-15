@@ -2,7 +2,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -196,7 +195,7 @@ stepThen dir ~(status1 : rest) f =
         case status1 of
             0 -> []
             1 -> f rest ++ [Just (rev dir)]
-            2 -> [Nothing]
+            2 -> Nothing : f rest ++ [Just (rev dir)]
 iddfs :: (Int, Int) -> Set (Int, Int) -> Int -> [Int] -> [Maybe Int]
 iddfs _ _ 0 _ = []
 iddfs coord path depth output =
@@ -205,19 +204,51 @@ iddfs coord path depth output =
     else
         let newPath = Set.insert coord path
             north = stepThen 1 output $ iddfs (move 1 coord) newPath (depth - 1)
-            south = stepThen 2 (drop (length north) output) $ iddfs (move 2 coord) newPath (depth - 1)
-            west  = stepThen 3 (drop (length north + length south) output) $ iddfs (move 3 coord) newPath (depth - 1)
-            east  = stepThen 4 (drop (length north + length south + length west) output) $ iddfs (move 4 coord) newPath (depth - 1)
+            south = stepThen 2 (drop (length (catMaybes north)) output) $ iddfs (move 2 coord) newPath (depth - 1)
+            west  = stepThen 3 (drop (length (catMaybes north) + length (catMaybes south)) output) $ iddfs (move 3 coord) newPath (depth - 1)
+            east  = stepThen 4 (drop (length (catMaybes north) + length (catMaybes south) + length (catMaybes west)) output) $ iddfs (move 4 coord) newPath (depth - 1)
         in  north ++ south ++ west ++ east
 
-search :: [Int] -> [Int]
+search :: [Int] -> [(Int, [Maybe Int])]
 search output =
-    map fromJust $ takeWhile isJust depths
+    depths
     where
         depths = go 0 output
         go depth o =
             let thisDepth = iddfs (0, 0) Set.empty depth o
-            in traceShow depth $ thisDepth ++ go (depth + 1) (drop (length thisDepth) o)
+            in (depth, thisDepth) : go (depth + 1) (drop (length (catMaybes thisDepth)) o)
+
+search' :: [Int] -> [Int]
+search' output = map fromJust $ takeWhile isJust $ concat $ map snd $ search output
+
+discover :: [Int] -> [Int]
+discover output =
+    -- 1000000 is assumed to be way more than enough search depth.
+    catMaybes $ iddfs (0, 0) Set.empty 1000000 output
+
+moveEverywhere :: [(Int, Int)] -> (Set (Int, Int), (Int, Int))
+moveEverywhere io =
+    (Set.insert final allButOne, oxygen)
+    where
+        maybeMove (c, s, o) (dir, 0) = (c, s, o)
+        maybeMove (c, s, o) (dir, 1) = (move dir c, Set.insert c s, o)
+        maybeMove (c, s, _) (dir, 2) =
+            let newCoord = move dir c
+            in  (newCoord, Set.insert c s, Just newCoord)
+        (final, allButOne, Just oxygen) = foldl' maybeMove ((0, 0), Set.empty, Nothing) io
+
+neighbors :: (Int, Int) -> [(Int, Int)]
+neighbors (x, y) = [(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)]
+
+flood :: (Int, Int) -> Set (Int, Int) -> Int
+flood oxygen =
+    go 0 (Set.singleton oxygen)
+    where
+        go hours o2 space =
+            if Set.size o2 == Set.size space then
+                hours
+            else
+                go (hours + 1) (Set.intersection space (Set.union o2 (Set.unions (Set.map (Set.fromList . neighbors) o2)))) space
 
 a :: IO Int
 a = do
@@ -226,16 +257,26 @@ a = do
         memory <- initialize 1000000 program :: ST s (STArray s Int Int)
         rec output <-
                 runProgram memory (ICState
-                    { stdin = search output
+                    { stdin = search' output
                     , rb = 0
                     })
-        return $ length output
+        return $ fst $ fromJust $ find (\(_, xs) -> Nothing `elem` xs) $ search output
 
 b :: IO Int
 b = do
-    undefined
+    program <- readInput
+    return $ runST $ do
+        memory <- initialize 1000000 program :: ST s (STArray s Int Int)
+        rec output <-
+                runProgram memory (ICState
+                    { stdin = discover output
+                    , rb = 0
+                    })
+        let fullInput = discover output
+            (allEmptySpace, oxygen) = moveEverywhere (zip fullInput output)
+        return $ flood oxygen allEmptySpace
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
