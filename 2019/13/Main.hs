@@ -224,9 +224,9 @@ makeGameState tiles =
                 Map.insert (x, y) z m
 
 plot :: Map (Int, Int) Int -> String
-plot hull =
+plot gameState =
     unlines $
-        [ [ case Map.findWithDefault 0 (x, y) hull of
+        [ [ case Map.findWithDefault 0 (x, y) gameState of
                 0 -> ' '
                 1 -> '|'
                 2 -> '#'
@@ -236,10 +236,10 @@ plot hull =
           ]
         | y <- [minY..maxY]]
     where
-        minX = minimum $ map fst $ Map.keys hull
-        maxX = maximum $ map fst $ Map.keys hull
-        minY = minimum $ map snd $ Map.keys hull
-        maxY = maximum $ map snd $ Map.keys hull
+        minX = minimum $ map fst $ Map.keys gameState
+        maxX = maximum $ map fst $ Map.keys gameState
+        minY = minimum $ map snd $ Map.keys gameState
+        maxY = maximum $ map snd $ Map.keys gameState
 
 triples :: [a] -> [(a, a, a)]
 triples [] = []
@@ -260,7 +260,7 @@ a = do
                 })
         return $ length $ filter ((== 2) . third) $ triples output
 
-b :: IO (String, Int, Int)
+b :: IO (String, [Int], Int)
 b = do
     program <- readInput
     return $ runST $ do
@@ -291,15 +291,30 @@ b = do
                     replicate 15  ( 0) ++
                     replicate 2   ( 1) ++
                     replicate 1   (-1) ++
-                    replicate 288 ( 0) ++
-                    replicate 33  ( 1) ++  -- Infinite loop?
-                    --replicate 33  ( -1) ++
+                    replicate 287 ( 0) ++
+                    replicate 33  ( 1) ++
+                    replicate 75  ( 0) ++
+                    replicate 4   (-1) ++
+                    replicate 150 ( 0) ++
+                    replicate 32  (-1) ++
+                    replicate 10  ( 0) ++
+                    replicate 28  ( 1) ++
+                    replicate 10  ( 0) ++
+                    replicate 26  (-1) ++
+                    replicate 10  ( 0) ++
+                    replicate 2   (-1) ++
+                    replicate 6   ( 0) ++
+                    replicate 1   ( 1) ++
+                    replicate 22  ( 0) ++
+                    replicate 4   (-1) ++
+                    -- TODO: This guessing game takes too much time.
+                    --       Can we follow the ball in real-time?
                     repeat 0
                 , rb = 0
                 })
         let gameState = makeGameState (triples output)
         return ( plot gameState
-               , third $ fromJust $ find (\(x, y, z) -> x == -1 && y == 0) $ triples output
+               , map third $ filter (\(x, y, z) -> x == -1 && y == 0) $ triples output
                , length $ filter (== 2) $ Map.elems gameState
                )
 
