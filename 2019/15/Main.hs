@@ -218,9 +218,6 @@ search output =
             let thisDepth = iddfs (0, 0) Set.empty depth o
             in (depth, thisDepth) : go (depth + 1) (drop (length (catMaybes thisDepth)) o)
 
-search' :: [Int] -> [Int]
-search' output = map fromJust $ takeWhile isJust $ concat $ map snd $ search output
-
 discover :: [Int] -> [Int]
 discover output =
     -- 1000000 is assumed to be way more than enough search depth.
@@ -255,25 +252,27 @@ a = do
     program <- readInput
     return $ runST $ do
         memory <- initialize 1000000 program :: ST s (STArray s Int Int)
-        rec output <-
+        rec let searchResults = search output
+                input = map fromJust $ takeWhile isJust $ concat $ map snd searchResults
+            output <-
                 runProgram memory (ICState
-                    { stdin = search' output
+                    { stdin = input
                     , rb = 0
                     })
-        return $ fst $ fromJust $ find (\(_, xs) -> Nothing `elem` xs) $ search output
+        return $ fst $ fromJust $ find (\(_, xs) -> Nothing `elem` xs) searchResults
 
 b :: IO Int
 b = do
     program <- readInput
     return $ runST $ do
         memory <- initialize 1000000 program :: ST s (STArray s Int Int)
-        rec output <-
+        rec let input = discover output
+            output <-
                 runProgram memory (ICState
-                    { stdin = discover output
+                    { stdin = input
                     , rb = 0
                     })
-        let fullInput = discover output
-            (allEmptySpace, oxygen) = moveEverywhere (zip fullInput output)
+        let (allEmptySpace, oxygen) = moveEverywhere (zip input output)
         return $ flood oxygen allEmptySpace
 
 main :: IO ()
