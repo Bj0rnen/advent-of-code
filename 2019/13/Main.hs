@@ -16,7 +16,7 @@ import Data.Maybe
 import Data.Array.MArray
 import Data.Array.ST
 import Control.Monad
-import Control.Monad.ST
+import Control.Monad.ST.Lazy
 import Control.Monad.RWS
 import Control.Monad.Trans.Class
 import Data.Bifunctor
@@ -24,6 +24,7 @@ import Data.List
 import Data.Ord
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Debug.Trace
 
 type Parser = Parsec Void String
 
@@ -248,6 +249,32 @@ triples (x : y : z : xs) = (x, y, z) : triples xs
 third :: (a, b, c) -> c
 third (_, _, x) = x
 
+dropNonBallsButTraceScore :: [(Int, Int, Int)] -> [(Int, Int, Int)]
+dropNonBallsButTraceScore ((-1, 0, score) : tiles) =
+    --traceShow ("Score: " ++ show score) $
+        dropNonBallsButTraceScore tiles
+dropNonBallsButTraceScore tiles@((ballX, ballY, 4) : _) = tiles
+dropNonBallsButTraceScore (_ : tiles) = dropNonBallsButTraceScore tiles
+
+followBall :: Int -> [(Int, Int, Int)] -> (Int, [(Int, Int, Int)])
+followBall paddleX tiles =
+    let ((ballX, ballY, 4) : rest) = dropNonBallsButTraceScore tiles
+    in  --traceShow (paddleX, ballX) $
+            (if ballX < paddleX then -1 else if ballX > paddleX then 1 else 0, rest)
+
+followBallForever :: Int -> [(Int, Int, Int)] -> [(Int, [(Int, Int, Int)])]
+followBallForever paddleX tiles =
+    let (moveMade, rest) = followBall paddleX tiles
+    in  (moveMade, rest) : followBallForever (paddleX + moveMade) rest
+
+play :: [Int] -> [Int]
+play output =
+    let tiles = triples output
+        (startX, startY, 3) =
+            --traceShowId $
+                fromJust $ find ((== 3) . third) tiles
+    in  map fst $ followBallForever startX tiles
+
 a :: IO Int
 a = do
     program <- readInput
@@ -260,65 +287,23 @@ a = do
                 })
         return $ length $ filter ((== 2) . third) $ triples output
 
-b :: IO (String, [Int], Int)
+b :: IO Int
 b = do
     program <- readInput
     return $ runST $ do
         memory <- initialize 1000000 program :: ST s (STArray s Int Int)
         writeArray memory 0 2
-        output <-
-            runProgram memory (ICState
-                { stdin =
-                    replicate 11  ( 0) ++
-                    replicate 8   (-1) ++
-                    replicate 0   ( 0) ++
-                    replicate 6   (-1) ++
-                    replicate 2   ( 0) ++
-                    replicate 2   ( 1) ++
-                    replicate 8   ( 0) ++
-                    replicate 2   (-1) ++
-                    replicate 13  ( 0) ++
-                    replicate 2   (-1) ++
-                    replicate 10  ( 0) ++
-                    replicate 2   ( 1) ++
-                    replicate 10  ( 0) ++
-                    replicate 2   (-1) ++
-                    replicate 23  ( 1) ++
-                    replicate 400 ( 0) ++
-                    replicate 27  (-1) ++
-                    replicate 73  ( 0) ++
-                    replicate 6   ( 1) ++
-                    replicate 15  ( 0) ++
-                    replicate 2   ( 1) ++
-                    replicate 1   (-1) ++
-                    replicate 287 ( 0) ++
-                    replicate 33  ( 1) ++
-                    replicate 75  ( 0) ++
-                    replicate 4   (-1) ++
-                    replicate 150 ( 0) ++
-                    replicate 32  (-1) ++
-                    replicate 10  ( 0) ++
-                    replicate 28  ( 1) ++
-                    replicate 10  ( 0) ++
-                    replicate 26  (-1) ++
-                    replicate 10  ( 0) ++
-                    replicate 2   (-1) ++
-                    replicate 6   ( 0) ++
-                    replicate 1   ( 1) ++
-                    replicate 22  ( 0) ++
-                    replicate 4   (-1) ++
-                    -- TODO: This guessing game takes too much time.
-                    --       Can we follow the ball in real-time?
-                    repeat 0
-                , rb = 0
-                })
+        rec let input = play output
+            output <-
+                runProgram memory (ICState
+                    { stdin = input
+                    , rb = 0
+                    })
         let gameState = makeGameState (triples output)
-        return ( plot gameState
-               , map third $ filter (\(x, y, z) -> x == -1 && y == 0) $ triples output
-               , length $ filter (== 2) $ Map.elems gameState
-               )
+        let scores = map third $ filter (\(x, y, z) -> x == -1 && y == 0) $ triples output
+        return $ last scores
 
 main :: IO ()
 main = do
     a >>= print
-    b >>= \(s, score, blocks) -> putStrLn s >> print score >> print blocks
+    b >>= print
