@@ -227,11 +227,27 @@ a = do
             aps = map alignmentParameter is
         return $ sum aps
 
+
+routine = "A,A,B,C,A,C,A,B,C,B"
+programA = "R,12,L,8,R,6"
+programB = "R,12,L,6,R,6,R,8,R,6"
+programC = "L,8,R,8,R,6,R,12"
+--------------------------------
+-- R,12,L,8,R,6, R,12,L,8,R,6, R,12,L,6,R,6,R,8,R,6, L,8,R,8,R,6,R,12, R,12,L,8,R,6, L,8,R,8,R,6,R,12, R,12,L,8,R,6, R,12,L,6,R,6,R,8,R,6, L,8,R,8,R,6,R,12, R,12,L,6,R,...
 b :: IO Int
 b = do
-    undefined
+    program <- readInput
+    return $ runST $ do
+        memory <- initialize 1000000 program :: ST s (STArray s Int Int)
+        writeArray memory 0 2
+        output <-
+            runProgram memory (ICState
+                { stdin = map fromEnum $ concatMap (++ "\n") [routine, programA, programB, programC, "n"]
+                , rb = 0
+                })
+        return $ last output
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
