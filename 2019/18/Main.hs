@@ -49,15 +49,19 @@ nextStates m (State n (x, y) ks) =
     in  Set.fromList $ catMaybes $ map (\pos -> newState pos ks (visit ks (m ! pos))) dirs
 
 solve1 :: UArray (Int, Int) Char -> Int
-solve1 m = go m 0 (Set.singleton (State 0 start Set.empty))
+solve1 m = go m 0 (Set.singleton (State 0 start Set.empty)) Set.empty
     where
         start = findCoord '@' m
         totalKeys = countCoords (\c -> c >= 'a' && c <= 'z') m
-        go m steps states
+        go m steps states statesEverTried
             | (trace "Max keys found:" (traceShowId (numKeys (Set.findMax states)))) == totalKeys = steps
             | otherwise =
                 trace ("Steps taken: " ++ show steps) $
-                    go m (steps + 1) (Set.foldl' (\ss s -> Set.union ss (nextStates m s)) Set.empty states)
+                    go
+                        m
+                        (steps + 1)
+                        (Set.difference (Set.foldl' (\ss s -> Set.union ss (nextStates m s)) Set.empty states) statesEverTried)
+                        (Set.union statesEverTried states)
 
 
 a :: IO Int
