@@ -83,14 +83,13 @@ solve m = go m 0 (Set.singleton (State 0 entrances Set.empty)) Set.empty
         entrances = findCoords '@' m
         totalKeys = countCoords (\c -> c >= 'a' && c <= 'z') m
         go m steps states statesEverTried
-            | (trace "Max keys found:" (traceShowId (numKeys (Set.findMax states)))) == totalKeys = steps
+            | (numKeys (Set.findMax states)) == totalKeys = steps
             | otherwise =
-                trace ("Steps taken: " ++ show steps) $
-                    go
-                        m
-                        (steps + 1)
-                        (Set.difference (Set.foldl' (\ss s -> Set.union ss (nextStates m s)) Set.empty states) statesEverTried)
-                        (Set.union statesEverTried states)
+                go
+                    m
+                    (steps + 1)
+                    (Set.difference (Set.foldl' (\ss s -> Set.union ss (nextStates m s)) Set.empty states) statesEverTried)
+                    (Set.union statesEverTried states)
 
 patch :: UArray (Int, Int) Char -> UArray (Int, Int) Char
 patch m =
@@ -119,5 +118,5 @@ b = do
 
 main :: IO ()
 main = do
-    --a >>= print
+    a >>= print
     b >>= print
