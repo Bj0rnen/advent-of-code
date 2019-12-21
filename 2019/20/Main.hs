@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 import Data.Array.Unboxed
 import Data.List
@@ -12,23 +13,37 @@ import Control.Monad
 
 import Debug.Trace
 
-data Cell = Wall | Open | Portal String [(Int, Int)]
-    deriving (Show)
+data Innerness = Inner | Outer
+    deriving (Show, Eq, Ord)
+
+data Cell = Wall | Open | Portal String Innerness [(Int -> Int, (Int, Int))]
+
+data State = State { level :: Int, position :: (Int, Int) }
+    deriving (Show, Eq, Ord)
 
 isWall :: Cell -> Bool
 isWall Wall = True
 isWall _ = False
 
+isEffectivelyWall :: Int -> Cell -> Bool
+isEffectivelyWall _ Wall = True
+isEffectivelyWall 0 (Portal "AA" Outer _) = False
+isEffectivelyWall 0 (Portal "ZZ" Outer _) = False
+isEffectivelyWall 0 (Portal _ Outer _) = True
+isEffectivelyWall _ (Portal "AA" Outer _) = True
+isEffectivelyWall _ (Portal "ZZ" Outer _) = True
+isEffectivelyWall _ _ = False
+
 isPortal :: Cell -> Bool
-isPortal (Portal _ _) = True
+isPortal (Portal _ _ _) = True
 isPortal _ = False
 
 isZZ :: Cell -> Bool
-isZZ (Portal "ZZ" _) = True
+isZZ (Portal "ZZ" _ _) = True
 isZZ _ = False
 
-nextStates :: Array (Int, Int) Cell -> (Int, Int) -> Set (Int, Int)
-nextStates donut (x, y) =
+nextStates1 :: Array (Int, Int) Cell -> (Int, Int) -> Set (Int, Int)
+nextStates1 donut (x, y) =
     let alternatives =
             case donut ! (x, y) of
                 Open ->
@@ -38,20 +53,49 @@ nextStates donut (x, y) =
                     , (x - 1, y    )
                     , (x + 1, y    )
                     ]
-                Portal _ alts -> alts
+                Portal _ _ alts -> map snd alts
     in  Set.fromList alternatives
 
-solve :: Array (Int, Int) Cell -> (Int, Int) -> Int
-solve donut aa =
+nextStates2 :: Array (Int, Int) Cell -> State -> Set State
+nextStates2 donut (State level (x, y)) =
+    let alternatives =
+            case donut ! (x, y) of
+                Open ->
+                    map (State level) $ filter (not . isEffectivelyWall level . (donut !))
+                    [ (x    , y - 1)
+                    , (x    , y + 1)
+                    , (x - 1, y    )
+                    , (x + 1, y    )
+                    ]
+                Portal _ _ alts -> map (\(modLevel, p) -> State (modLevel level) p) alts
+    in  Set.fromList alternatives
+
+solve1 :: Array (Int, Int) Cell -> (Int, Int) -> Int
+solve1 donut aa =
     go 0 [aa] Set.empty
     where
+        go :: Int -> [(Int, Int)] -> Set (Int, Int) -> Int
         go steps states statesEverTried =
             case find isZZ $ map (donut !) states of
-                Just (Portal "ZZ" _) -> steps
+                Just (Portal "ZZ" _ _) -> steps
                 Nothing ->
                     go
                         (steps + 1)
-                        (Set.toList (Set.difference (foldl' (\ss s -> Set.union ss (nextStates donut s)) Set.empty states) statesEverTried))
+                        (Set.toList (Set.difference (foldl' (\ss s -> Set.union ss (nextStates1 donut s)) Set.empty states) statesEverTried))
+                        (Set.union statesEverTried (Set.fromList states))
+
+solve2 :: Array (Int, Int) Cell -> (Int, Int) -> Int
+solve2 donut aa =
+    go 0 [State 0 aa] Set.empty
+    where
+        go :: Int -> [State] -> Set State -> Int
+        go steps states statesEverTried =
+            case find isZZ $ map (\s -> donut ! position s) states of
+                Just (Portal "ZZ" _ _) -> steps
+                Nothing ->
+                    go
+                        (steps + 1)
+                        (Set.toList (Set.difference (foldl' (\ss s -> Set.union ss (nextStates2 donut s)) Set.empty states) statesEverTried))
                         (Set.union statesEverTried (Set.fromList states))
 
 parse :: String -> (Array (Int, Int) Cell, (Int, Int))
@@ -72,31 +116,31 @@ parse s = (donut, aa)
             | whole ! (x, y) == '#' = Wall
             | x ==            2                                   =
                 let label = [whole ! (           0,            y), whole ! (           1,            y)]
-                in  Portal label ((x + 1, y    ) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Outer ((id, (x + 1, y    )) : (map ((subtract 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | x == holeMinX - 1 && y >= holeMinY && y <= holeMaxY =
                 let label = [whole ! (holeMinX    ,            y), whole ! (holeMinX + 1,            y)]
-                in  Portal label ((x - 1, y    ) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Inner ((id, (x - 1, y    )) : (map ((       + 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | x == holeMaxX + 1 && y >= holeMinY && y <= holeMaxY =
                 let label = [whole ! (holeMaxX - 1,            y), whole ! (holeMaxX    ,            y)]
-                in  Portal label ((x + 1, y    ) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Inner ((id, (x + 1, y    )) : (map ((       + 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | x ==     cols - 3                                   =
                 let label = [whole ! (    cols - 2,            y), whole ! (    cols - 1,            y)]
-                in  Portal label ((x - 1, y    ) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Outer ((id, (x - 1, y    )) : (map ((subtract 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | y ==            2                                   =
                 let label = [whole ! (           x,            0), whole ! (           x,            1)]
-                in  Portal label ((x    , y + 1) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Outer ((id, (x    , y + 1)) : (map ((subtract 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | y == holeMinY - 1 && x >= holeMinX && x <= holeMaxX =
                 let label = [whole ! (           x, holeMinY    ), whole ! (           x, holeMinY + 1)]
-                in  Portal label ((x    , y - 1) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Inner ((id, (x    , y - 1)) : (map ((       + 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | y == holeMaxY + 1 && x >= holeMinX && x <= holeMaxX =
                 let label = [whole ! (           x, holeMaxY - 1), whole ! (           x, holeMaxY    )]
-                in  Portal label ((x    , y + 1) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Inner ((id, (x    , y + 1)) : (map ((       + 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | y ==     rows - 3                                   =
                 let label = [whole ! (           x,     rows - 2), whole ! (           x,     rows - 1)]
-                in  Portal label ((x    , y - 1) : (filter (/= (x, y)) $ portals Map.! label))
+                in  Portal label Outer ((id, (x    , y - 1)) : (map ((subtract 1),) $ filter (/= (x, y)) $ portals Map.! label))
             | otherwise = Open
         portals :: Map String [(Int, Int)]
-        portals = Map.fromListWith (++) $ map (\(coord, (Portal label _)) -> (label, [coord])) $ filter (\(_, cell) -> isPortal cell) $ map (\c -> (c, donut ! c)) donutCoords
+        portals = Map.fromListWith (++) $ map (\(coord, (Portal label _ _)) -> (label, [coord])) $ filter (\(_, cell) -> isPortal cell) $ map (\p -> (p, donut ! p)) donutCoords
         donut = array ((0, 0), (cols - 1, rows - 1)) [(p, toCell p) | p <- donutCoords]
         aa = head $ portals Map.! "AA"
 
@@ -110,13 +154,14 @@ plot m =
 a :: IO Int
 a = do
     (donut, aa) <- parse <$> readFile "input.txt"
-    return $ solve donut aa
+    return $ solve1 donut aa
 
 b :: IO Int
 b = do
-    undefined
+    (donut, aa) <- parse <$> readFile "input.txt"
+    return $ solve2 donut aa
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
