@@ -202,32 +202,22 @@ solve2 program =
             else
                 go (x + 1, y)
 
-strat1 :: [Bool] -> Bool
-strat1 [False, _    , _    , _    ] = True
-strat1 [_    , _    , _    , False] = False
-strat1 [True , False, False, True ] = True
-strat1 [True , False, True , True ] = True
-strat1 [True , True , False, True ] = False
-strat1 [True , True , True , True ] = False
+strat4 :: [Bool] -> Bool
+strat4 [False, _    , _    , _    ] = True
+strat4 [_    , _    , _    , False] = False
+strat4 [True , False, False, True ] = True
+strat4 [True , False, True , True ] = True
+strat4 [True , True , False, True ] = True
+strat4 [True , True , True , True ] = False
 
-strat1' [a, b, c, d] = not a || (d && not b)
-
-strat2 :: [Bool] -> Bool
-strat2 [False, _    , _    , _    ] = True
-strat2 [_    , _    , _    , False] = False
-strat2 [True , False, False, True ] = True
-strat2 [True , False, True , True ] = True
-strat2 [True , True , False, True ] = True
-strat2 [True , True , True , True ] = False
-
-strat2' [a, b, c, d] = not a || (d && (not (b && c)))
-strat2'' [a, b, c, d] = not a || (d && (not b || not c))
+strat4' [a, b, c, d] = not a || (d && (not (b && c)))
+strat4'' [a, b, c, d] = not a || (d && (not b || not c))
 
 a :: IO Int
 a = do
     program <- readInput
     return $ runST $ do
-        memory <- initialize 1000000 program :: ST s (STArray s Int Int)
+        memory <- initialize 10000 program :: ST s (STUArray s Int Int)
         output <-
             runProgram memory (ICState
                 { stdin = map fromEnum $ concatMap (++ "\n")
@@ -245,11 +235,46 @@ a = do
                 })
         return $ last output
 
+strat9 :: [Bool] -> Bool
+strat9 [False, _    , _    , _    , _    , _    , _    , _    , _    ] = True
+strat9 [_    , _    , _    , False, _    , _    , _    , _    , _    ] = False
+strat9 [True , False, False, True , _    , _    , _    , _    , _    ] = True
+strat9 [True , False, True , True , _    , _    , _    , _    , _    ] = True
+strat9 [True , True , True , True , _    , _    , _    , _    , _    ] = False
+strat9 [True , True , False, True , False, _    , _    , False, _    ] = False
+strat9 [True , True , False, True , _    , _    , _    , _    , _    ] = True
+
+strat9' [a, b, c, d, e, f, g, h, i] = not a || (d && (not b || (not c && (e || h))))
+
 b :: IO Int
 b = do
-    undefined
+    program <- readInput
+    return $ runST $ do
+        memory <- initialize 10000 program :: ST s (STUArray s Int Int)
+        output <-
+            runProgram memory (ICState
+                { stdin = map fromEnum $ concatMap (++ "\n")
+                    [ "NOT H T"
+                    , "NOT T T"
+                    , "NOT E J"
+                    , "NOT J J"
+                    , "OR T J"
+                    , "NOT C T"
+                    , "AND J T"
+                    , "NOT B J"
+                    , "OR J T"
+                    , "NOT D J"
+                    , "NOT J J"
+                    , "AND J T"
+                    , "NOT A J"
+                    , "OR T J"
+                    , "RUN"
+                    ]
+                , rb = 0
+                })
+        return $ last output
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
