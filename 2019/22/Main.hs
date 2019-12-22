@@ -43,17 +43,17 @@ readInput :: KnownNat p => String -> IO [Shuffle p]
 readInput file = map (justParse parseTechnique) . lines <$> readFile file
 
 
-lookupCard :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
-lookupCard index (Shuffle {..}) = index * multiplyBy + thenAdd
+findCard :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
+findCard card (Shuffle {..}) = card * multiplyBy + thenAdd
 
 lookupIndex :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
-lookupIndex card (Shuffle {..}) = (card - thenAdd) / multiplyBy
+lookupIndex index (Shuffle {..}) = (index - thenAdd) / multiplyBy
 
 
 a :: IO (PrimeField 10007)
 a = do
     shuffles <- readInput "input.txt"
-    return $ lookupCard 2019 $ mconcat shuffles
+    return $ findCard 2019 $ mconcat shuffles
 
 b :: IO (PrimeField 119315717514047)
 b = do
