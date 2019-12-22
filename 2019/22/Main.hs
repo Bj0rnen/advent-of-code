@@ -5,6 +5,11 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -24,6 +29,10 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Bifunctor
+import Data.Semigroup
+import Data.Reflection
+import Data.FiniteField.PrimeField
+import Debug.Trace
 
 type Parser = Parsec Void String
 
@@ -32,8 +41,8 @@ justParse p s = fromJust $ parseMaybe p s
 
 data Technique =
     DINS
-    | C Int
-    | DWI Int
+    | C Integer
+    | DWI Integer
 
 parseTechnique :: Parser Technique
 parseTechnique = do
@@ -46,28 +55,44 @@ readInput file = do
     s <- readFile file
     return $ map (justParse parseTechnique) $ lines s
 
-positionOf :: Int -> UArray Int Int -> Int
-positionOf i = fromJust . findIndex (== i) . elems
+data Shuffle = Shuffle { multiplyBy :: Integer, thenAdd :: Integer }
+    deriving (Show, Eq, Ord)
+instance Given Integer => Semigroup Shuffle where
+    (Shuffle a b) <> (Shuffle c d) =
+        Shuffle ((a * c) `mod` given) ((b * c + d) `mod` given)
+instance Given Integer => Monoid Shuffle where
+    mempty = Shuffle 1 0
 
-performTechnique :: Int -> Technique -> UArray Int Int -> UArray Int Int
-performTechnique size DINS !cards = ixmap (0, size - 1) ((size - 1) -) cards
-performTechnique size (C n) !cards = ixmap (0, size - 1) (\i -> (i + n + size) `mod` size) cards
-performTechnique size (DWI n) !cards = array (0, size - 1) $ map (\(i, c) -> ((i * n) `mod` size, c)) $ assocs cards
+lookupCard :: Given Integer => Integer -> Shuffle -> Integer
+lookupCard index (Shuffle {..}) = (index * multiplyBy + thenAdd) `mod` given
 
-performShuffle :: Int -> [Technique] -> UArray Int Int
-performShuffle size shuffle =
-    foldl' (flip (performTechnique size)) (listArray (0, size - 1) [0..size - 1]) shuffle
+lookupIndex :: Given Integer => Integer -> Shuffle -> Integer
+lookupIndex card (Shuffle {..}) =
+    let card' :: $(primeField 119315717514047)
+        card' = fromIntegral card
+        mult' :: $(primeField 119315717514047)
+        mult' = fromIntegral multiplyBy
+        add' :: $(primeField 119315717514047)
+        add' = fromIntegral thenAdd
+    in  Data.FiniteField.PrimeField.toInteger $ (card' - add') / mult'
 
-a :: IO Int
+toShuffle :: Technique -> Shuffle
+toShuffle DINS = Shuffle (-1) (-1)
+toShuffle (C n) = Shuffle 1 (-n)
+toShuffle (DWI n) = Shuffle n 0
+
+
+a :: IO Integer
 a = do
-    shuffle <- readInput "input.txt"
-    return $ positionOf 2019 $ performShuffle 10007 shuffle
+    shuffles <- map toShuffle <$> readInput "input.txt"
+    return $ give 10007 $ lookupCard 2019 $ mconcat shuffles
 
-b :: IO Int
+b :: IO Integer
 b = do
-    undefined
+    shuffles <- map toShuffle <$> readInput "input.txt"
+    return $ give 119315717514047 $ lookupIndex 2020 $ stimes 101741582076661 $ mconcat shuffles
 
 main :: IO ()
 main = do
     a >>= print
-    --b >>= print
+    b >>= print
