@@ -30,8 +30,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Bifunctor
 import Data.Semigroup
-import Data.Reflection
 import Data.FiniteField.PrimeField
+import GHC.TypeNats
 import Debug.Trace
 
 type Parser = Parsec Void String
@@ -55,42 +55,35 @@ readInput file = do
     s <- readFile file
     return $ map (justParse parseTechnique) $ lines s
 
-data Shuffle = Shuffle { multiplyBy :: Integer, thenAdd :: Integer }
+data Shuffle p = Shuffle { multiplyBy :: PrimeField p, thenAdd :: PrimeField p }
     deriving (Show, Eq, Ord)
-instance Given Integer => Semigroup Shuffle where
+instance KnownNat p => Semigroup (Shuffle p) where
     (Shuffle a b) <> (Shuffle c d) =
-        Shuffle ((a * c) `mod` given) ((b * c + d) `mod` given)
-instance Given Integer => Monoid Shuffle where
+        Shuffle (a * c) (b * c + d)
+instance KnownNat p => Monoid (Shuffle p) where
     mempty = Shuffle 1 0
 
-lookupCard :: Given Integer => Integer -> Shuffle -> Integer
-lookupCard index (Shuffle {..}) = (index * multiplyBy + thenAdd) `mod` given
+lookupCard :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
+lookupCard index (Shuffle {..}) = index * multiplyBy + thenAdd
 
-lookupIndex :: Given Integer => Integer -> Shuffle -> Integer
-lookupIndex card (Shuffle {..}) =
-    let card' :: $(primeField 119315717514047)
-        card' = fromIntegral card
-        mult' :: $(primeField 119315717514047)
-        mult' = fromIntegral multiplyBy
-        add' :: $(primeField 119315717514047)
-        add' = fromIntegral thenAdd
-    in  Data.FiniteField.PrimeField.toInteger $ (card' - add') / mult'
+lookupIndex :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
+lookupIndex card (Shuffle {..}) = (card - thenAdd) / multiplyBy
 
-toShuffle :: Technique -> Shuffle
+toShuffle :: KnownNat p => Technique -> Shuffle p
 toShuffle DINS = Shuffle (-1) (-1)
-toShuffle (C n) = Shuffle 1 (-n)
-toShuffle (DWI n) = Shuffle n 0
+toShuffle (C n) = Shuffle 1 (fromIntegral (-n))
+toShuffle (DWI n) = Shuffle (fromIntegral n) 0
 
 
-a :: IO Integer
+a :: IO (PrimeField 10007)
 a = do
     shuffles <- map toShuffle <$> readInput "input.txt"
-    return $ give 10007 $ lookupCard 2019 $ mconcat shuffles
+    return $ lookupCard 2019 $ mconcat shuffles
 
-b :: IO Integer
+b :: IO (PrimeField 119315717514047)
 b = do
     shuffles <- map toShuffle <$> readInput "input.txt"
-    return $ give 119315717514047 $ lookupIndex 2020 $ stimes 101741582076661 $ mconcat shuffles
+    return $ lookupIndex 2020 $ stimes 101741582076661 $ mconcat shuffles
 
 main :: IO ()
 main = do
