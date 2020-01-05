@@ -188,52 +188,102 @@ triples :: [a] -> [(a, a, a)]
 triples [] = []
 triples (x : y : z : xs) = (x, y, z) : triples xs
 
-sendMessage :: MonadIO m => Array Int (Output Int) -> Consumer' Int m ()
-sendMessage outputs = loop
+feedInput :: MonadIO m => Input Int -> Int -> TVar Bool -> Producer' Int m ()
+feedInput input i idleFlag = do
+    yield i
+    --fromInput (inputs ! i)
+    loop
+    where
+        loop = do
+            ma <- liftIO $ atomically $
+                    recv input <* writeTVar idleFlag False
+                    -- The retry semantics of recv aren't clear to me.
+                    -- This appears to work, but is slow. Maybe a timout
+                    -- on recv would still be correct, and faster?
+                <|> Just (-1) <$ writeTVar idleFlag True
+            case ma of
+                Nothing -> return ()
+                Just a  -> do
+                    yield a
+                    loop
+
+propagateOutput :: MonadIO m => Array Int (Output Int) -> Output (Int, Int) -> Consumer' Int m ()
+propagateOutput outputs natOutput = loop
     where
         loop = do
             i <- await
             let output = outputs ! i
             x <- await
             y <- await
-            if i == 255 then
-                liftIO $ putStrLn $ "The answer is " ++ show y
+            if i == 255 then do
+                --liftIO $ putStrLn $ "Hello " ++ show (x, y)
+                couldSend <- liftIO $ atomically $
+                    send natOutput (x, y)
+                when couldSend loop
             else do
                 couldSend <- liftIO $ atomically $ do
                     (&&) <$> send output x <*> send output y
                 when couldSend loop
 
-minusOnes :: MonadIO m => Producer Int m ()
-minusOnes = forever do
-    liftIO $ threadDelay 1000000
-    yield (-1)
-
+nat :: MonadIO m => Output Int -> [TVar Bool] -> Consumer' (Int, Int) m ()
+nat output0 idleFlags = loop
+    where
+        loop = do
+            --liftIO $ putStrLn "Well"
+            liftIO $ atomically $ do
+                mapM_ (readTVar >=> check) idleFlags
+                forM idleFlags \idleFlag -> writeTVar idleFlag False
+            --liftIO $ putStrLn "Hello"
+            (x, y) <- await
+            --liftIO $ putStrLn $ "World " ++ show (x, y)
+            liftIO $ print y
+            couldSend <- liftIO $ atomically $ do
+                (&&) <$> send output0 x <*> send output0 y
+            when couldSend loop
 
 a :: IO [[Int]]
-a = do
+a = do undefined
+    --program <- readInput
+    --(outputs', inputs', seals) <- unzip3 <$> replicateM 50 (spawn' unbounded)
+    --let outputs = listArray (0, 49) outputs'
+    --    inputs = listArray (0, 49) inputs'
+    --
+    --xs <- forConcurrently [0..49] \i -> do
+    --    memory <- initialize 100000 program :: IO (IOArray Int Int)
+    --    runEffect $
+    --        feedInput (inputs ! i) i
+    --        >->
+    --        runProgram memory (ICState { rb = 0 })
+    --        >->
+    --        propagateOutput outputs
+    --atomically $ sequence seals
+    --return []
+
+b :: IO [[Int]]
+b = do
     program <- readInput
-    (outputs', inputs', seals) <- unzip3 <$> replicateM 50 (spawn' unbounded)
+    (outputs', inputs, seals) <- unzip3 <$> replicateM 50 (spawn' unbounded)
     let outputs = listArray (0, 49) outputs'
-        inputs = listArray (0, 49) inputs'
 
-    minusOners <- forM [0..49] \i -> async $ runEffect $ minusOnes >-> toOutput (outputs ! i)
+    idleFlags <- replicateM 50 $ newTVarIO False
 
-    xs <- forConcurrently [0..49] \i -> do
+    (natOutput, natInput, natSeal) <- spawn' (newest 1)
+    async $ runEffect $ fromInput natInput >-> nat (outputs ! 0) idleFlags
+
+    xs <- forConcurrently (zip3 [0..49] inputs idleFlags) \(i, input, idleFlag) -> do
         memory <- initialize 100000 program :: IO (IOArray Int Int)
         runEffect $
-            (yield i >> fromInput (inputs ! i))
+            feedInput input i idleFlag
             >->
             runProgram memory (ICState { rb = 0 })
             >->
-            sendMessage outputs
-    atomically $ sequence seals
+            propagateOutput outputs natOutput
+    atomically $ do
+        sequence seals
+        natSeal
     return []
-
-b :: IO Int
-b = do
-    undefined
 
 main :: IO ()
 main = do
-    a >>= print
-    --b >>= print
+    --a >>= print
+    b >>= print
