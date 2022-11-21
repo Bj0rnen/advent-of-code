@@ -17,15 +17,15 @@ justParse :: (Stream s, Ord e) => Parsec e s a -> s -> a
 justParse p s = fromJust $ parseMaybe p s
 
 
-data Shuffle p = Shuffle
-    { multiplyBy :: PrimeField p
-    , thenAdd :: PrimeField p
+data Shuffle a = Shuffle
+    { multiplyBy :: a
+    , thenAdd    :: a
     } deriving (Show, Eq, Ord)
 
-instance KnownNat p => Semigroup (Shuffle p) where
+instance Num a => Semigroup (Shuffle a) where
     (Shuffle a b) <> (Shuffle c d) =
         Shuffle (a * c) (b * c + d)
-instance KnownNat p => Monoid (Shuffle p) where
+instance Num a => Monoid (Shuffle a) where
     mempty = Shuffle 1 0
 
 dealIntoNewStack    = Shuffle (-1) (-1)
@@ -33,20 +33,20 @@ cut               n = Shuffle 1    (-n)
 dealWithIncrement n = Shuffle n    0
 
 
-parseTechnique :: KnownNat p => Parser (Shuffle p)
+parseTechnique :: Num a => Parser (Shuffle a)
 parseTechnique = do
     dealIntoNewStack <$ string "deal into new stack"
     <|> cut . fromIntegral <$> (string "cut " *> L.signed (return ()) L.decimal)
     <|> dealWithIncrement . fromIntegral <$> (string "deal with increment " *> L.decimal)
 
-readInput :: KnownNat p => String -> IO [Shuffle p]
+readInput :: Num a => String -> IO [Shuffle a]
 readInput file = map (justParse parseTechnique) . lines <$> readFile file
 
 
-findCard :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
+findCard :: Num a => a -> Shuffle a -> a
 findCard card (Shuffle {..}) = card * multiplyBy + thenAdd
 
-lookupIndex :: KnownNat p => PrimeField p -> Shuffle p -> PrimeField p
+lookupIndex :: Fractional a => a -> Shuffle a -> a
 lookupIndex index (Shuffle {..}) = (index - thenAdd) / multiplyBy
 
 
@@ -55,7 +55,7 @@ a = do
     shuffles <- readInput "input.txt"
     return $ findCard 2019 $ mconcat shuffles
 
-b :: IO (PrimeField 119315717514047)
+b :: IO Rational
 b = do
     shuffles <- readInput "input.txt"
     return $ lookupIndex 2020 $ stimes 101741582076661 $ mconcat shuffles

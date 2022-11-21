@@ -1,11 +1,12 @@
 with (import <nixpkgs> {}).pkgs;
 let
-  ghcPackages = haskell.packages.ghc865;
+  dependent-format = import ../dependent-format/release.nix;
+  ghcPackages = haskell.packages.ghc901;
   ghc = ghcPackages.ghcWithPackages
-          (pkgs: with pkgs; [ megaparsec dlist mtl reflection finite-field async pipes pipes-concurrency ]);
+          (pkgs: with pkgs; [ megaparsec dlist mtl reflection async pipes pipes-concurrency dependent-format ]);
 in
 stdenv.mkDerivation {
   name = "my-haskell-env-0";
-  buildInputs = [ ghc ghcPackages.hlint ];
+  buildInputs = [ ghc ghcPackages.haskell-language-server ];
   shellHook = "eval $(grep export ${ghc}/bin/ghc)";
 }
